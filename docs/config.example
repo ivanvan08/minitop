@@ -1,0 +1,151 @@
+# minitop configuration
+# minitop writes this file on first run when it is absent and never touches
+# it again; edit it and the next start picks the changes up.
+# Path: $XDG_CONFIG_HOME/minitop/config, else ~/.config/minitop/config.
+# Override at runtime with: minitop --config PATH
+# Format: key = value. '#' starts a comment. An unknown key or a bad value
+# stops parsing at that line with a message on stderr; keys above it stay
+# applied and the rest of the file is ignored.
+
+# --- runtime mode ---
+# 1 vanilla: no model, no LLM, no network call at all. Set column.flags = false
+#   to drop the column, since without a model there is no verdict to show.
+# 2 decision model only: the FLAGS cell carries the level (1..10) and turns red
+#   at or above model.threshold, blue below it.
+# 3 model as a filter: every process the model puts at or above the threshold
+#   is sent to the LLM, and only the LLM's reasoned verdict paints a cell red.
+#   Rows above the threshold stay dim while their answer is in flight, and a
+#   level below the threshold is final: it stays blue. A row above the threshold
+#   whose LLM can never answer, because the stage failed to start (a missing key
+#   file, for example), is painted in the attention colour (242,168,58): it is
+#   flagged and unreviewed, which is neither of the two verdict colours.
+# mode wins over model.enabled and llm.enabled, so the two engine blocks below
+# cannot contradict it. The built-in default is 1; this file ships that default
+# so copying it verbatim costs no network call.
+mode = 1
+
+# --- refresh ---
+# Frame interval in milliseconds (200..60000).
+refresh_ms = 1000
+# How often disk usage is re-read, in seconds (1..3600); statvfs is not free.
+disk_refresh_sec = 5
+
+# --- panels ---
+# Setting this to false hides the right header panel (the "ceo" portrait)
+# entirely, even on terminals wide enough to show it. Below 100 columns the
+# panel is not drawn at all, so the key changes nothing there.
+show_portrait = true
+# Read GPU utilisation, VRAM and clock once per frame; the probe runs an
+# external command that costs about 20 ms per frame, so turn it off to save it.
+gpu = true
+
+# --- table ---
+# Column the table is sorted by: pid,user,command,state,cpu,mem,time,flags,perms.
+# Hiding that column moves the sort to the first visible one, and the arrow
+# follows, so the table never claims an order it does not use.
+sort_column = cpu
+# true sorts largest first, false reverses the order.
+sort_desc = true
+# Draw a background on the selected row. With false nothing marks the row, but
+# x kill still targets it, so the footer names the selected row instead.
+highlight_row = true
+# Navigation keys: h/l, j/k, s, x, f and the arrows. Set to false for a table
+# that only reports: nothing moves, nothing sorts, nothing can be killed, and
+# q still quits.
+navigation = true
+
+# --- columns: set any key to false to hide that table column ---
+# With every column false the PID column is shown anyway, and the sort and the
+# selection fall back to it, so the table never sorts or kills by a column that
+# is not on screen. Narrow terminals drop columns from the right when the row
+# does not fit, without a message. FLAGS is never dropped: the column is sized
+# to the widest tag text in the pass (up to "DEL,TMP,MEMFD,NET"), so all four
+# tags stay readable even at 60 columns.
+# Show the PID column.
+column.pid = true
+# Show the USER column.
+column.user = true
+# Show the COMMAND column.
+column.command = true
+# Show the STATE column.
+column.state = true
+# Show the CPU% column.
+column.cpu = true
+# Show the MEM column.
+column.mem = true
+# Show the TIME+ column.
+column.time = true
+# Show the FLAGS column: DEL/TMP/MEMFD/NET text in mode 1, the model verdict
+# colour in modes 2 and 3.
+column.flags = true
+# Show the PERMS column.
+column.perms = true
+
+# --- decision model (v0.4) ---
+# Turn the model on; minitop makes no network calls while this is false. Modes 2
+# and 3 force this on regardless, so the line only decides anything in mode 1.
+model.enabled = false
+# Print the request for the first non-trusted process and exit, without a key
+# or any network call. Works in every mode, whether or not model.enabled is set;
+# if llm.dry_run is also true, the LLM preview wins.
+model.dry_run = false
+# Decisions endpoint that receives the JSON request.
+model.endpoint = https://openrouter.ai/api/alpha/decisions
+# Model id sent in the request and written to the report. mammoth wins the
+# 2026-11-26 run on 32 labelled cases: 31/32 against 30/32 for jev, and it is
+# the only working model that flags the ELF listener. baseten/bison-1 scores
+# best on paper but its provider answers HTTP 429 in waves.
+model.name = baseten/mammoth-1
+# File that holds the API key; it must be readable by the user running minitop.
+model.key_file = ~/.config/minitop/openrouter.key
+# Risk level (1..10) at which FLAGS turns red on dark red; below it is blue on
+# dark blue. Level 5 is the first concrete evasion level, so ordinary and
+# merely unusual activity stays blue.
+model.threshold = 5
+# Re-score each process after a randomised 0.8..1.2 times this many seconds.
+model.resample_sec = 1500
+# Maximum new model requests queued by one refresh pass.
+model.max_per_pass = 300
+# Append one JSON line per verdict (pid, comm, level, timestamp, model); no
+# cmdline is ever written, and "none" disables the report.
+model.report_path = llm_log
+
+# --- uncertain-band LLM (v0.4) ---
+# Send a process to the chat model only when its decision level is inside the
+# uncertain band; the stage is off by default and makes no network calls.
+llm.enabled = false
+# DeepSeek reasoning snapshot ($0.15/M prompt, $0.60/M completion, verified
+# 2026-11-25). It answers in 1.6 s for 456 tokens on the deleted-binary fixture
+# against 5.4 s and 295 tokens for deepseek/deepseek-chat, and names the reason
+# better, so it is the default. Hidden reasoning is billed as completion, and a
+# slow case can spend the whole budget before it writes the verdict, which is
+# why llm.max_tokens is 4000 and not a few hundred.
+llm.name = deepseek/deepseek-v4.1-flash-1017
+# Endpoint that receives the chat-completions request. It must speak the
+# OpenAI-compatible chat-completions API: a POST with a Bearer key and a body
+# of model, messages, temperature, max_tokens and usage; the text is read from
+# choices[0].message.content and the token counts from usage.
+llm.endpoint = https://openrouter.ai/api/v1/chat/completions
+# File that holds the OpenRouter key, read into memory and never logged.
+llm.key_file = ~/.config/minitop/openrouter.key
+# Lowest decision level that is sent to the LLM, inclusive (3 leaves clearly safe processes out).
+# Mode 3 derives this band from model.threshold..10, because there the model is
+# the filter, so both keys below are ignored whenever the LLM actually runs;
+# they are read only by llm_engine_create callers other than mode 3.
+llm.min_level = 3
+# Highest decision level that is sent to the LLM, inclusive (7 leaves clearly malicious processes out).
+llm.max_level = 7
+# Minimum seconds before the same process may be sent to the LLM again.
+llm.resample_sec = 1800
+# Maximum new LLM requests queued by one refresh pass.
+llm.max_per_pass = 10
+# Maximum completion tokens per answer, including hidden reasoning tokens.
+# The prompt asks for the VERDICT line first and at most three short reasoning
+# sentences, so a slow case still has room left after the verdict.
+llm.max_tokens = 4000
+# Append one JSON line per LLM verdict (pid, comm, verdict, reason, detail,
+# truncated flag, model, timestamp, prompt/completion/reasoning tokens and
+# cost); "none" disables it.
+llm.report_path = llm_verdicts.jsonl
+# Print the first LLM request and exit without reading the key or using the network, even when llm.enabled is false.
+llm.dry_run = false

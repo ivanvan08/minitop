@@ -1,0 +1,11 @@
+minitop
+tests/tests
+tests/test_gpu
+tests/test_config
+tests/test_model
+tests/test_llm
+*.o
+compile_flags.txt
+compile_commands.json
+llm_log
+llm_verdicts.jsonl
